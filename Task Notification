@@ -1,0 +1,68 @@
+public class TaskTrigger {
+
+    public static void sendNotification(Id i){
+        
+        List<Task> tList = [Select Id,WhoId,OwnerId from Task WHERE Id =: i];
+             List<CustomNotificationType > TemplateInfoDetail = [SELECT Id, DeveloperName FROM CustomNotificationType 
+                                                                 WHERE DeveloperName = 'Task_Assignment_Notification'];
+        
+         Set<String> s = new Set<String>();
+         s.add(tList[0].OwnerId);
+             
+            Messaging.CustomNotification cNotify = new Messaging.CustomNotification();
+              cNotify.setTitle('New Enquiry Assigned');
+              cNotify.setBody('Enquiry '+tList[0].Id+' has been assigned to you');
+              cNotify.setNotificationTypeId(TemplateInfoDetail[0].Id);
+              cNotify.setTargetId(tList[0].OwnerId); 
+        try{
+            cNotify.send(s);
+        }
+        catch(Exception e){
+            system.debug('Notification faild due to '+e.getMessage());
+        }
+        
+    } 
+}
+
+
+
+
+
+
+
+
+
+
+public class TaskSendNotification {
+
+    public static void sendNotification(Id tId){
+        List<Task> tList = [Select Id,Next_Action_Date__c,WhoId,WhatId From Task where Id =: tId];
+        system.debug(tList);
+        if(tList[0].WhatId != null){       //Opportunity
+            List<Opportunity> oList = [Select Id,Name,Sales_Next_Action_Date__c,OwnerId from Opportunity WHERE Id=:tList[0].WhatId];
+                system.debug(oList);
+                String body = 'The followup in pending for '+oList[0].Name+ ' at '+oList[0].Sales_Next_Action_Date__c.format();
+                CustomNotificationType leadNotification = [SELECT Id,DeveloperName FROM CustomNotificationType WHERE DeveloperName='Notification_test'];
+                Messaging.CustomNotification Notification = new Messaging.CustomNotification(); 
+                Notification.setNotificationTypeId(leadNotification.id); 
+                Notification.setSenderId(Userinfo.getUserId()); 
+                Notification.setBody(body); 
+                Notification.setTitle('Follow up Pending'); 
+                Notification.setTargetId(oList[0].Id); 
+                Notification.send(new Set<String> {oList[0].OwnerId}); 
+        }
+        else if(tList[0].WhoId != null){   //Lead
+            List<Lead> lList = [Select Id,Name,	Latest_Next_Action_Date__c,OwnerId from Lead WHERE Id =: tList[0].WhoId];
+                System.debug(lList);
+                CustomNotificationType leadNotification = [SELECT Id,DeveloperName FROM CustomNotificationType WHERE DeveloperName='Notification_test'];
+                Messaging.CustomNotification Notification = new Messaging.CustomNotification(); 
+                String body = 'The followup in pending for '+lList[0].Name+' at '+lList[0].Latest_Next_Action_Date__c.format();
+                Notification.setNotificationTypeId(leadNotification.id); 
+                Notification.setSenderId(Userinfo.getUserId()); 
+                Notification.setBody(body); 
+                Notification.setTitle('Follow up Pending'); 
+                Notification.setTargetId(lList[0].Id); 
+                Notification.send(new Set<String> {lList[0].OwnerId}); 
+        }
+    }
+}
