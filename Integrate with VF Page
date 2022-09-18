@@ -1,0 +1,889 @@
+<apex:page controller="CreateExotelActivity" action="{!insertActivity}" sidebar="false" showHeader="false">
+    
+</apex:page>
+
+
+
+
+
+
+
+//By Yogesh 12/3/2021
+//Creating Exotel->Inbound Activity
+public class CreateExotelActivity {
+   public string customerNumber{get;set;}
+   public string did{get;set;}
+   public string ucid{get;set;}
+   public string callStatus{get;set;}
+   public string callType{get;set;}
+   public string recordingFile{get;set;}
+   public string duration{get;set;}
+   public string UUI{get;set;}
+   public string CampaignStatus{get;set;}
+   public string agentNumber{get;set;}
+   public string agentNumberRouting {get;set;}
+   public boolean newlead {get;set;}
+   public List < lead > llist {get;set;}
+   public List < Account > aList {get;set;}
+   public Map<Id,Id> taskIdMap {get;set;}
+   public List < Task > utmUniqueTaskList{get;set;}
+   public Id PersonContactWhoIds{get;set;}
+   public String Country{get;set;}
+   public String CountryCode{get;set;}
+   public Id CreatedRecordId{get;set;}
+    
+     public CreateExotelActivity() 
+    {
+        
+           customerNumber = ApexPages.currentPage().getParameters().get('From');  
+           did = ApexPages.currentPage().getParameters().get('CallTo');  
+           ucid = ApexPages.currentPage().getParameters().get('CallSid');  
+           callStatus = ApexPages.currentPage().getParameters().get('Type');  
+           callType = ApexPages.currentPage().getParameters().get('Direction');  
+           recordingFile = ApexPages.currentPage().getParameters().get('RecordingUrl');  
+           duration = ApexPages.currentPage().getParameters().get('DialCallDuration');  
+          //  UUI = ApexPages.currentPage().getParameters().get('UUI'); //No UUI Since Inbound Call 
+           CampaignStatus = ApexPages.currentPage().getParameters().get('CampaignStatus');  
+           agentNumber = ApexPages.currentPage().getParameters().get('CallTo');  
+           agentNumberRouting = ApexPages.currentPage().getParameters().get('DialWhomNumber');  
+               
+        system.debug('req='+ApexPages.currentPage().getParameters());
+        System.debug('Incoming Call request: callType: ' + callType + ' callStatus: ' + callStatus + ' customerNumber: ' + customerNumber + ': ' + ucid + ' UUI: ' + UUI + ' CampaignStatus: ' + CampaignStatus + ' DID: ' + did);
+
+        if(String.isNotBlank(callType)&&callType.equalsIgnoreCase('incoming')){
+            callType = 'Inbound';
+        }
+        if(String.isNotBlank(callStatus)&&callStatus.equalsIgnoreCase('Completed')){
+            callStatus = 'Answered';
+        }else{
+        if(String.isNotBlank(callStatus)&&callStatus.equalsIgnoreCase('Incomplete')){
+             callStatus = 'Missed';
+        }
+        }
+        
+        newlead = false;
+        llist = new List < lead > ();
+        aList = new List < Account > ();
+        taskIdMap = new Map<Id,Id>();
+        utmUniqueTaskList = new  List < Task >();
+        PersonContactWhoIds=null;
+        Country = '';
+        CountryCode = '';
+        CreatedRecordId = null;
+        
+         Map<String,String> cDetails = new Map<String,String>();
+            if(String.isNotBlank(customerNumber)){
+                cDetails = CountryDetails.getDetailsByMobile(customerNumber);
+                system.debug('mobile number details::'+cDetails);
+               if(cDetails.size()>0 && cDetails != null){
+                  customerNumber = cDetails.get('mobileNumber');
+                  Country = cDetails.get('country');
+                  CountryCode = cDetails.get('countryCode');
+               }
+            }
+    }
+    
+     public void insertActivity(){
+           System.debug('customerNumber: '+customerNumber+' Country: '+Country+' CountryCode: '+CountryCode);
+        if (String.isNotBlank(callType) && calltype.equalsIgnoreCase('Inbound') && String.isNotBlank(callStatus) && (callStatus.equalsIgnoreCase('Missed') || callStatus.equalsIgnoreCase('NotAnswered')) &&
+            (String.isBlank(campaignStatus) || (String.isNotBlank(campaignStatus) && !campaignStatus.equalsIgnoreCase('OFFLINE')))) {
+            
+            List < Campaign > cList = new List < Campaign >();
+            List < DID_Settings__c > setting = New List < DID_Settings__c >();
+            String didN1 = did.right(10);
+            String didN2 = '91'+didN1;                
+                
+              cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                    Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c from
+                    Campaign where Digital_Maketing_Campaign_Code__c =: didN2 and isActive = true];
+
+           if(cList.isEmpty())
+            {
+              setting = [SELECT Id, Name, Campaign_Id__c from DID_Settings__c Where Name = : did];
+                if(!setting.isEmpty()){
+                     cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, Primary_Project__r.Handled_by_SM__c,Primary_Project__r.Project_Site_Head__c, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                     Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c, IsHandleByCampaignUser__c, HandleByUser__c from
+                     Campaign where Digital_Maketing_Campaign_Code__c =: setting[0].Campaign_Id__c and isActive = true
+                    ];
+                }
+            }
+            llist = [Select Id, name from Lead where(mobilePhone =: customerNumber or Phone =: customerNumber) and isConverted = false];
+            Id recordId;
+            if (llist != null && !llist.isEmpty() && llist.size() > 0) {
+                llist[0].is_serviced__c = false;
+                update llist[0];
+                recordId = llist[0].Id;
+            } else {
+               
+                aList = [Select Id, is_serviced__c,PersonContactId from Account where(personMobilePhone =: customerNumber or Phone =: customerNumber) and isPersonAccount = true];
+                if (aList != null && !aList.isEmpty() && aList.size() > 0) {
+                    alist[0].is_serviced__c = false;
+                    update alist[0];
+                    recordId = alist[0].Id;
+                    PersonContactWhoIds = alist[0].PersonContactId;
+                } else {
+                    Lead l = new Lead(lastName = 'CTI Missed Call lead', RDS_Country__c	= Country ,RDS_Country_Code__c = CountryCode ,mobilePhone = customerNumber,leadsource = cList[0].Type,
+                                     Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now(), Auto_Assign__c = true);
+                    insert l;
+                    recordId = l.Id;
+                    newlead = true;
+                }
+            }
+                
+                if (string.isNotBlank(recordId)) {
+                System.debug('Record Id for missed call task creation:' + recordId);
+                
+                task t = new task();
+                t.status = 'Completed';
+                t.task_type__c = 'Enquiry Received';
+                String x = did.right(10);
+                String y = '91'+x;
+                t.Subject = 'New Enquiry Received From:' + y;
+                t.Mobile_Number_Webform__c = customerNumber;
+                t.country__c = Country;
+                t.dialingCode__c = CountryCode;
+                t.description = y;
+                t.UTM_campaign__c = y;
+                if (cList != null && clist.size() == 1) {
+                    t.Enquiry_Source__c = cList[0].Type;
+                    t.Enquiry_Sub_Source__c = cList[0].Sub_Source__c;
+                    t.ProjectInterestedWeb__c = cList[0].Primary_Project__c;
+                    t.Campaign_Lookup__c = cList[0].Id;
+                    if (String.isNotBlank(cList[0].Campaign_Channel__c))
+                        t.Campaign_Channel__c = cList[0].Campaign_Channel__c;
+                    if (String.isNotBlank(cList[0].Campaign_Code__c))
+                        t.Campaign_Code__c = cList[0].Campaign_Code__c;
+                    if (String.isNotBlank(cList[0].Parent.Name))
+                        t.Parent_Campaign__c = cList[0].Parent.Name;
+                }
+
+                t.callType = callType;
+                t.Communication_Type__c = 'Inbound Call';
+                t.CallObject = ucid;
+                t.CallDisposition = callStatus;
+                t.CallDurationInSeconds = Integer.valueOf(duration);
+                t.AudioFile__c = recordingFile;
+                if (recordId.getSObjectType().getDescribe().getName() == 'Lead') {
+                    t.whoId = recordId;
+                } else if (recordId.getSObjectType().getDescribe().getName() == 'Account') {
+                    t.whatId = recordId;
+                    t.whoId = PersonContactWhoIds;
+                }
+                t.activityDate = System.today();
+                t.Call_Time__c = System.Now().format('h:mm a');
+                
+                if(String.isNotBlank(t.ProjectInterestedWeb__c)){
+                    taskIdMap.put(t.whoId, t.ProjectInterestedWeb__c);
+                 }
+                if(taskIdMap.size()>0){
+                for (Id entryId : taskIdMap.keySet()) {
+                utmUniqueTaskList = [SELECT Id, Subject, WhoId, WhatId, OwnerId, Task_Type__c,ProjectInterestedWeb__c  from Task where WhoId =: entryId AND Task_Type__c =: 'Enquiry Received' AND ProjectInterestedWeb__c =: taskIdMap.get(entryId)];
+                    if(utmUniqueTaskList.size()>0){
+                        t.IdentifiedAs__c='Repeat';
+                    } else {
+                        t.IdentifiedAs__c='Unique';
+                    }
+                 }
+                }
+                if (newlead)
+                    t.new_lead_created__c = true;
+                try {
+                    insert t;
+                    System.debug('task created:' + t.id);
+                } catch (Exception ex) {
+                    System.debug('task insert failed :' + ex.getMessage());
+                }
+                
+            }
+        } else if (String.isNotBlank(callType) && calltype.equalsIgnoreCase('manual') && String.isNotBlank(UUI)) {// && String.isNotBlank(campaignStatus) && campaignStatus.equalsIgnoreCase('OFFLINE')
+            System.debug('UUI:' + UUI + 'DID:' + did);
+            
+        } else if (String.isNotBlank(callType) && calltype.equalsIgnoreCase('inbound') && String.isNotBlank(campaignStatus) && campaignStatus.equalsIgnoreCase('OFFLINE') ) {//
+            
+            System.debug('didTest='+did+'customerNumber='+customerNumber+'campaignStatus='+campaignStatus);
+            List < Campaign > cList = new List < Campaign >();
+            List < DID_Settings__c > setting = New List < DID_Settings__c >();
+            String didN1 = did.right(10);
+            String didN2 = '91'+didN1;
+            
+            cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, Primary_Project__r.Handled_by_SM__c,Primary_Project__r.Project_Site_Head__c, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c, IsHandleByCampaignUser__c, HandleByUser__c from
+                Campaign where Digital_Maketing_Campaign_Code__c =: didN2 and isActive = true
+            ];
+            
+            if(cList.isEmpty())
+            {
+              setting = [SELECT Id, Name, Campaign_Id__c from DID_Settings__c Where Name = : did];
+                if(!setting.isEmpty()) {
+                     cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, Primary_Project__r.Handled_by_SM__c,Primary_Project__r.Project_Site_Head__c, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                     Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c, IsHandleByCampaignUser__c, HandleByUser__c from
+                     Campaign where Digital_Maketing_Campaign_Code__c =: setting[0].Campaign_Id__c and isActive = true
+                    ];
+                }
+            }
+            if (!cList.isEmpty() && cList.size() == 1 && cList[0].Primary_Project__c != null && (cList[0].IsHandleByCampaignUser__c || cList[0].Primary_Project__r.Handled_by_SM__c)) {
+               System.debug('cList.Primary_Project__c='+cList[0].Primary_Project__c+'HandleByCampaign='+cList[0].HandleByUser__c+'HandleByProjectSM='+cList[0].Primary_Project__r.Handled_by_SM__c);
+            
+                llist = [Select Id, name from Lead where(mobilePhone =: customerNumber or Phone =: customerNumber) and isConverted = false];
+                Id recordId;
+                String RoutingNumberModified;
+                if(agentNumberRouting!=null){
+                RoutingNumberModified = agentNumberRouting.right(10);
+                }
+                String RoutingNumberModified1;
+                if(agentNumberRouting!=null){
+                RoutingNumberModified1 = '+91 '+agentNumberRouting.right(10);
+                }
+                System.debug('AgentNumberReceived='+RoutingNumberModified);
+                 List < User > uList = new List < User >();
+                //List < User > uList = [Select Id, ProfileId, Name from User where CallerId__c =: did];
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + agentNumberRouting + '%' + '\' and isActive=true');
+                if(uList.isEmpty()){  //Checking With agentNumberModified Last 10 Digits 
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + RoutingNumberModified + '%' + '\' and isActive=true');
+                }
+                if(uList.isEmpty()){  //Checking With agentNumberModified Last 10 Digits 
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + RoutingNumberModified1 + '%' + '\' and isActive=true');
+                }
+                if(uList.isEmpty()){
+                 uList = [Select Id, ProfileId, Name,MobilePhone,isActive from User where MobilePhone =: '+91 '+RoutingNumberModified];
+                }
+                if (uList.isEmpty() && cList[0].IsHandleByCampaignUser__c){
+                     uList = [Select Id, ProfileId, Name from User where Id =: cList[0].HandleByUser__c];  
+                 }
+                if (uList.isEmpty() && cList[0].Primary_Project__r.Handled_by_SM__c){
+                     uList = [Select Id, ProfileId, Name from User where Id =: cList[0].Primary_Project__r.Project_Site_Head__c];  
+                 }
+                List < Profile > profile = new List < Profile > ();
+                String strPro = '';
+                if(!uList.isEmpty()){
+                profile = [Select Id, Name from Profile where Id =: uList[0].ProfileId];
+                strPro = profile[0].Name;
+                }
+                Id userId;
+                if (!uList.isEmpty())
+                    userId = uList[0].Id;
+                if (llist != null && !llist.isEmpty() && llist.size() > 0) {
+                    llist[0].is_serviced__c = false;
+                    llist[0].Time_of_New_Enquiry__c = system.now();
+                    update llist[0];
+                    recordId = llist[0].Id;
+                } else {
+                    aList = [Select Id, is_serviced__c,PersonContactId from Account where(personMobilePhone =: customerNumber or Phone =: customerNumber) and isPersonAccount = true];
+                    if (aList != null && !aList.isEmpty() && aList.size() > 0) {
+                        alist[0].is_serviced__c = false;
+                        alist[0].Time_of_New_Enquiry__c = system.now();
+                        update alist[0];
+                        PersonContactWhoIds=alist[0].PersonContactId;
+                        recordId = alist[0].Id;
+                    } else {
+                        Lead l;
+                        if(!profile.isEmpty() && strPro.equals('Presales')){
+                         
+                         /*if(cList[0].HandleByUser__c != null){
+                          OwnerId = cList[0].HandleByUser__c;
+                           }
+                          else{
+                             Presales_Agent__c = cList[0.HandleByUser__c]
+                           }
+                           */   
+                            if(cList[0].HandleByUser__c != null){
+                        l = new Lead(lastName = 'Presales Lead - ' + customerNumber, RDS_Country__c= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = cList[0].HandleByUser__c, Presales_Agent__c = cList[0].HandleByUser__c, leadsource = cList[0].Type,
+                                     Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                            }else if(cList[0].HandleByUser__c == null){
+                                l = new Lead(lastName = 'Presales Lead - ' + customerNumber, RDS_Country__c= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = userId, Presales_Agent__c = userId, leadsource = cList[0].Type,
+                                     Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                            }
+                        } else if(cList[0].HandleByUser__c != null){
+                            l = new Lead(lastName = 'Sales Lead - ' + customerNumber , RDS_Country__c	= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = cList[0].HandleByUser__c, Manager__c = cList[0].HandleByUser__c, leadsource = cList[0].Type,
+                            Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                        }else if(profile.isEmpty() && !strPro.equals('Presales')){ 
+                            if(cList[0].HandleByUser__c == null){
+                            l = new Lead(lastName = 'Sales Lead - ' + customerNumber , RDS_Country__c	= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = userId, Manager__c = userId, leadsource = cList[0].Type,
+                            Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                        }
+                    }
+                        insert l;
+                        recordId = l.Id;
+                        newlead = true;
+                    }
+                }
+                if (string.isNotBlank(recordId)) {
+                    task t = new task();
+                    t.status = 'Completed';
+                    t.task_type__c = 'Enquiry Received';
+                    String x = did.right(10);
+                    String y = '91'+x;
+                    t.Subject = 'New Enquiry Received From:' + y;
+                    t.CallObject = ucid;
+                    t.Mobile_Number_Webform__c = customerNumber;
+                    t.country__c = Country;
+                    t.dialingCode__c = CountryCode;
+                    t.callType = 'Inbound';
+                    t.Communication_Type__c = 'Inbound Call';
+                    t.activityDate = System.today();
+                    t.Call_Time__c = System.Now().format('h:mm a');
+                    if (userId != null){
+                        t.ownerId = userId;
+                        }
+                    if (recordId.getSObjectType().getDescribe().getName() == 'Lead') {
+                        List < Lead > lListD = [Select Id, Name, Lead_Id__c from Lead where Id =: recordId];
+                        t.whoId = recordId;
+                        t.Name1__c = lListD[0].Name;
+                        t.OPID__c = lListD[0].Lead_Id__c;
+                    } else if (recordId.getSObjectType().getDescribe().getName() == 'Account') {
+                        List < Account > lAccD = [Select Id, Name,PersonContactId from Account where Id =: recordId];
+                        t.whatId = recordId;
+                        t.whoId = lAccD[0].PersonContactId;
+                        t.Name1__c = lAccD[0].Name;
+                        t.OPID__c = 'This enquiry received on existing account';
+                        PersonContactWhoIds=lAccD[0].PersonContactId;
+                    }
+                    t.CallDisposition = callStatus;
+                     t.CallDurationInSeconds = Integer.valueOf(duration);
+                    t.AudioFile__c = recordingFile;
+                    if (!ulist.isEmpty() && ulist.size() == 1)
+                        t.FullName__c = ulist[0].Name;
+                    //t.Name1__c = accList[0].Name;
+                    // t.OPID__c = oppList[0].Opportunity_ID__c;
+                    String x1 = did.right(10);
+                    String y1 = '91'+x1;
+                    t.description = y1;
+                    t.UTM_Campaign__c = y1;
+                    if (cList != null && clist.size() == 1) {
+                        t.Enquiry_Source__c = cList[0].Type;
+                        t.Enquiry_Sub_Source__c = cList[0].Sub_Source__c;
+                        t.ProjectInterestedWeb__c = cList[0].Primary_Project__c;
+                        t.Campaign_Lookup__c = cList[0].Id;
+                        if (String.isNotBlank(cList[0].Campaign_Channel__c))
+                            t.Campaign_Channel__c = cList[0].Campaign_Channel__c;
+                        if (String.isNotBlank(cList[0].Campaign_Code__c))
+                            t.Campaign_Code__c = cList[0].Campaign_Code__c;
+                        if (String.isNotBlank(cList[0].Parent.Name))
+                            t.Parent_Campaign__c = cList[0].Parent.Name;
+                    }
+                   if(String.isNotBlank(t.ProjectInterestedWeb__c)){
+                      taskIdMap.put(t.whoId, t.ProjectInterestedWeb__c);
+                    }
+                if(taskIdMap.size()>0){
+                for (Id entryId : taskIdMap.keySet()) {
+                utmUniqueTaskList = [SELECT Id, Subject, WhoId, WhatId, OwnerId, Task_Type__c,ProjectInterestedWeb__c  from Task where WhoId =: entryId AND Task_Type__c =: 'Enquiry Received' AND ProjectInterestedWeb__c =: taskIdMap.get(entryId)];
+                    if(utmUniqueTaskList.size()>0){
+                        t.IdentifiedAs__c='Repeat';
+                    } else {
+                        t.IdentifiedAs__c='Unique';
+                    }
+                 }
+                }
+                    if (newlead)
+                        t.new_lead_created__c = true;
+                    try {
+                        insert t;system.debug('success:'+t.id);
+                    } catch (Exception ex) {
+                        System.debug('task Update failed :' + ex.getMessage());
+                    }
+
+                }
+            } else {
+                // Type:Inbound:OFFLINE One On One
+                String strPro = '';
+                 String RoutingNumberModified;
+                if(agentNumberRouting!=null){
+                RoutingNumberModified = agentNumberRouting.right(10);
+                }
+                
+                 String RoutingNumberModified1;
+                if(agentNumberRouting!=null){
+                RoutingNumberModified1 = '+91 '+agentNumberRouting.right(10);
+                }
+                List < Profile > profile = new List < Profile >();
+                List < User > uList = new List < User >();
+                uList = [Select Id, ProfileId, Name,MobilePhone,isActive from User where CallerId__c =: did AND MobilePhone Like:agentNumberRouting AND isActive=:true];
+                if(uList.isEmpty()){
+                 uList = [Select Id, ProfileId, Name,MobilePhone,isActive from User where CallerId__c =: did AND MobilePhone Like:RoutingNumberModified AND isActive=:true];
+                }
+                if(uList.isEmpty()){
+                 uList = [Select Id, ProfileId, Name,MobilePhone,isActive from User where CallerId__c =: did AND MobilePhone Like:RoutingNumberModified1 AND isActive=:true];
+                }
+                if(uList.isEmpty()){
+                 uList = [Select Id, ProfileId, Name,MobilePhone from User where CallerId__c =: did];
+                } 
+               if(!uList.isEmpty())
+                {  
+                	profile = [Select Id, Name from Profile where Id =: uList[0].ProfileId];
+                	strPro = profile[0].Name;
+            	}
+                System.debug('Profile Name: ' + strPro);
+                if (!profile.isEmpty() && strPro.contains('Presales')) {
+                    List < Account > accList = [Select id, Name from Account where PersonMobilePhone =: customerNumber or Phone =: customerNumber];
+                    List < Opportunity > oppList = new List < Opportunity > ();
+                    if (accList != null && accList.size() == 1) {
+                        system.debug('accId:'+accList[0].id);
+                        oppList = [Select id, Opportunity_ID__c, Project__c, Account.personcontactId,AccountId from Opportunity Where AccountId =: accList[0].Id limit 1];
+                    }
+                    List < Lead > leadList = new List < Lead > ();
+                    leadList = [Select Id, Name, Project__c, Lead_Id__c from Lead where MobilePhone =: customerNumber or Phone =: customerNumber];
+                    Id oppId;
+                    Id personContactId;
+                    if (oppList != null && oppList.size() == 1) {
+                        oppId = oppList[0].Id;
+                        personContactId = oppList[0].Account.personcontactId;
+                    }
+
+                    Id userId;
+                    if (uList != null && uList.size() == 1) {
+                        userId = uList[0].Id;
+                    }
+                    if ((oppList != null && !oppList.isEmpty() && oppList.size() == 1) || (leadList != null && !leadList.isEmpty() && leadList.size() == 1)) {
+                        task t = new task();
+                        t.status = 'Open';
+                        t.task_type__c = 'Presales Call';
+                        t.Subject = 'Inbound Call';
+                        t.CallObject = ucid;
+                        t.Mobile_Number_Webform__c = customerNumber;
+                        t.country__c = Country;
+                        t.dialingCode__c = CountryCode;
+                        t.callType = 'Inbound';
+                        t.Communication_Type__c = 'Inbound Call';
+                        t.activityDate = System.today();
+                        t.Call_Time__c = System.Now().format('h:mm a');
+                        if (userId != null){
+                            if(uList.size()>1){
+                                t.OwnerId = leadList[0].OwnerId;
+                            }else if(uList.size() == 1){
+                            t.ownerId = userId;
+                                }
+                         }
+                        if (oppId != null) {
+                            t.whatId = oppId;
+                            t.ProjectInterestedWeb__c = oppList[0].Project__c;
+                            t.Name1__c = accList[0].Name;
+                            t.OPID__c = oppList[0].Opportunity_ID__c;
+                            if (personContactId != null)
+                                t.whoId = personContactId;
+                        } else {
+                            t.whoId = leadList[0].Id;
+                            t.ProjectInterestedWeb__c = leadList[0].Project__c;
+                            t.Name1__c = leadList[0].Name;
+                            t.OPID__c = leadList[0].Lead_Id__c;
+                        }
+                        t.CallDisposition = callStatus;
+                         t.CallDurationInSeconds = Integer.valueOf(duration);
+                        t.AudioFile__c = recordingFile;
+                        t.FullName__c = ulist[0].Name;
+                        try {
+                            insert t;system.debug('success:'+t.id);
+                        } catch (Exception ex) {
+                            System.debug('task Update failed :' + ex.getMessage());
+                        }
+                    } else {
+                        System.debug('Unable to identify the opportunity for this mobile # ' + customerNumber);
+                    }
+                }
+                else if (!profile.isEmpty() && strPro.contains('Sales')) {
+                    List < Account > accList = [Select id, Name from Account where PersonMobilePhone =: customerNumber or Phone =: customerNumber];
+                    List < Opportunity > oppList = new List < Opportunity > ();
+                    if (accList != null && accList.size() == 1) {
+                        oppList = [Select id, Opportunity_ID__c, Project__c, Account.personcontactId from Opportunity Where AccountId =: accList[0].Id limit 1];
+                    }
+                    List < Lead > leadList = new List < Lead > ();
+                    leadList = [Select Id, Name, Project__c, Lead_Id__c from Lead where MobilePhone =: customerNumber or Phone =: customerNumber];
+                    Id oppId;
+                    Id personContactId;
+                    if (OppList != null && oppList.size() == 1) {
+                        oppId = oppList[0].Id;
+                        personContactId = oppList[0].Account.personcontactId;
+                    }
+
+                    Id userId;
+                    if (uList != null && uList.size() == 1) {
+                        userId = uList[0].Id;
+                    }
+                    if ((oppList != null && !oppList.isEmpty() && oppList.size() == 1) || (leadList != null && !leadList.isEmpty() && leadList.size() == 1)) {
+                        task t = new task();
+                        t.status = 'Open';
+                        t.task_type__c = 'Sales Call';
+                        t.Subject = 'Inbound Call';
+                        t.CallObject = ucid;
+                        t.Mobile_Number_Webform__c = customerNumber;
+                        t.country__c = Country;
+                        t.dialingCode__c = CountryCode;
+                        t.callType = 'Inbound';
+                        t.Communication_Type__c = 'Inbound Call';
+                        t.activityDate = System.today();
+                        t.Call_Time__c = System.Now().format('h:mm a');
+                        if (userId != null)
+                            t.ownerId = userId;
+
+                        if (oppId != null) {
+                            t.whatId = oppId;
+                            t.ProjectInterestedWeb__c = oppList[0].Project__c;
+                            t.Name1__c = accList[0].Name;
+                            t.OPID__c = oppList[0].Opportunity_ID__c;
+                            if (personContactId != null)
+                                t.whoId = personContactId;
+                        } else {
+                            t.whoId = leadList[0].Id;
+                            t.ProjectInterestedWeb__c = leadList[0].Project__c;
+                            t.Name1__c = leadList[0].Name;
+                            t.OPID__c = leadList[0].Lead_Id__c;
+                        }
+                        t.CallDisposition = callStatus;
+                         t.CallDurationInSeconds = Integer.valueOf(duration);
+                        t.AudioFile__c = recordingFile;
+                        t.FullName__c = ulist[0].Name;
+                        try {
+                            insert t;
+                            system.debug('success:'+t.id);
+                        } catch (Exception ex) {
+                            System.debug('task Update failed :' + ex.getMessage());
+                        }
+                    } else {
+                        System.debug('Unable to identify the opportunity for this mobile # ' + customerNumber);
+                    }
+                } else if (!profile.isEmpty() && strPro.contains('CRM')) {
+                    List < Account > accList = [Select id,PersonMobilePhone, Phone,personcontactId from Account where PersonMobilePhone =: customerNumber or Phone =: customerNumber];
+                    system.debug('acc='+accList+'customerNumber='+customerNumber);
+                    List < Opportunity > oppList = new List < Opportunity > ();
+                    if (accList != null && accList.size() == 1) {
+                        oppList = [Select id, Account.personcontactId, Relationship_Manager__c, SAP_Customer__c, SAP_Customer_Code__c, Project__c from Opportunity Where AccountId =: accList[0].Id and Relationship_Manager__c =: uList[0].Id limit 1];
+                         system.debug('oppList='+oppList);
+                    }
+                    Id oppId;
+                    Id personContactId;
+                    String SAPCustomerNumber;
+
+                    if (!oppList.isEmpty()) {
+                        oppId = oppList[0].Id;
+                        personContactId = oppList[0].Account.personcontactId;
+                        SAPCustomerNumber = oppList[0].SAP_Customer_Code__c;
+                    }
+
+                    Id userId;
+                    if (uList != null && uList.size() == 1) {
+                        userId = uList[0].Id;
+                    }
+                    if ((oppList != null && !oppList.isEmpty()) || (accList != null && !accList.isEmpty())) {
+                        task t = new task();
+                        t.status = 'Open';
+                        t.task_type__c = 'CRM Call';
+                        t.CallObject = ucid;
+                        t.Subject = 'CRM Inbound Call';
+                        t.Mobile_Number_Webform__c = customerNumber;
+                        t.country__c = Country;
+                        t.dialingCode__c = CountryCode;
+                        t.callType = 'Inbound';
+                        t.Communication_Type__c = 'Inbound Call';
+                        t.activityDate = System.today();
+                        t.Call_Time__c = System.Now().format('h:mm a');
+                        if (userId != null)
+                            t.ownerId = userId;
+                        if (oppId != null) {
+                            t.whatId = oppId;
+                        }
+                        if (SAPCustomerNumber != null) {
+                            t.SAP_Customer__c = SAPCustomerNumber;
+                        }
+                        if (personContactId != null)
+                            t.whoId = accList[0].personcontactId;
+                        t.CallDisposition = callStatus;
+                         t.CallDurationInSeconds = Integer.valueOf(duration);
+                        t.AudioFile__c = recordingFile;
+                        if (oppList[0].Project__c != null) {
+                            t.ProjectInterestedWeb__c = oppList[0].Project__c;
+                        }
+
+                        try {
+                            insert t;   system.debug('success:'+t.id);
+                        } catch (Exception ex) {
+                            System.debug('task Update failed :' + ex.getMessage());
+                        }
+                    } else {
+                        System.debug('Unable to identify the opportunity for this mobile # ' + customerNumber);
+                    }
+                }
+            }
+        } else {
+            
+             if (String.isNotBlank(callType) && (calltype.equalsIgnoreCase('Inbound')) && String.isNotBlank(campaignStatus) && campaignStatus.equalsIgnoreCase('ONLINE') && callStatus.equalsIgnoreCase('Answered')) {
+            
+            System.debug('didTest='+did+'customerNumber='+customerNumber);
+            List < Campaign > cList = new List < Campaign >();
+            List < DID_Settings__c > setting = New List < DID_Settings__c >();
+                 String didN1 = did.right(10);
+            String didN2 = '91'+didN1;
+
+            cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, Primary_Project__r.Handled_by_SM__c,Primary_Project__r.Project_Site_Head__c, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c, IsHandleByCampaignUser__c, HandleByUser__c from
+                Campaign where Digital_Maketing_Campaign_Code__c =: didN2 and isActive = true
+            ];
+            system.debug(cList);
+            if(cList.isEmpty())
+            {
+              setting = [SELECT Id, Name, Campaign_Id__c from DID_Settings__c Where Name = : did];
+                system.debug(setting);
+                if(!setting.isEmpty()) {
+                     cList = [select Id, Name, Type, Description, Primary_Project__c, Primary_Project__r.Name, Primary_Project__r.Handled_by_SM__c,Primary_Project__r.Project_Site_Head__c, CreatedDate, isActive, StartDate, EndDate, TollFree_Number__c, Digital_Maketing_Campaign_Code__c,
+                     Is_CTI_Campaign__c, Sub_Source__c, Parent.Name, Campaign_Channel__c, Campaign_Code__c, IsHandleByCampaignUser__c, HandleByUser__c from
+                     Campaign where Digital_Maketing_Campaign_Code__c =: setting[0].Campaign_Id__c and isActive = true
+                    ];
+                }
+            }
+           if (!cList.isEmpty()) {
+               System.debug('cList.Primary_Project__c='+cList[0].Primary_Project__c+'HandleByCampaign='+cList[0].HandleByUser__c+'HandleByProjectSM='+cList[0].Primary_Project__r.Handled_by_SM__c);
+            
+                llist = [Select Id, name from Lead where(mobilePhone =: customerNumber or Phone =: customerNumber) and isConverted = false];
+                Id recordId;
+                String RoutingNumberModified;
+               system.debug(agentNumberRouting);
+                if(agentNumberRouting!=null){
+                RoutingNumberModified = agentNumberRouting.right(10);
+                }
+               String RoutingNumberModified1;
+                if(agentNumberRouting!=null){
+                RoutingNumberModified1 = '+91 '+agentNumberRouting.right(10);
+                }
+               
+                System.debug('AgentNumberReceived='+RoutingNumberModified);
+                List < User > uList = new List < User >();
+                //List < User > uList = [Select Id, ProfileId, Name from User where CallerId__c =: did];
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + agentNumberRouting + '%' + '\' and isActive=true');
+                if(uList.isEmpty()){  //Checking With agentNumberModified Last 10 Digits 
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + RoutingNumberModified + '%' + '\' and isActive=true');
+                }
+               if(uList.isEmpty()){  //Checking With agentNumberModified Last 10 Digits 
+                    uList = database.Query('Select Id, ProfileId, MobilePhone,Name from User where MobilePhone like ' + '\'' + '%' + RoutingNumberModified1 + '%' + '\' and isActive=true');
+                }
+                if (uList.isEmpty() && cList[0].IsHandleByCampaignUser__c){
+                     uList = [Select Id, ProfileId, Name from User where Id =: cList[0].HandleByUser__c];  
+                 }
+                if (uList.isEmpty() && cList[0].Primary_Project__r.Handled_by_SM__c){
+                     uList = [Select Id, ProfileId, Name from User where Id =: cList[0].Primary_Project__r.Project_Site_Head__c];  
+                 }
+                List < Profile > profile = new List < Profile > ();
+                String strPro = '';
+                if(!uList.isEmpty()){
+                profile = [Select Id, Name from Profile where Id =: uList[0].ProfileId];
+                strPro = profile[0].Name;
+                }
+                Id userId;
+                if (!uList.isEmpty())
+                    userId = uList[0].Id;
+                if (llist != null && !llist.isEmpty() && llist.size() > 0) {
+                    llist[0].is_serviced__c = false;
+                    llist[0].Time_of_New_Enquiry__c = system.now();
+                    update llist[0];
+                    recordId = llist[0].Id;
+                } else {
+                    aList = [Select Id, is_serviced__c,PersonContactId from Account where(personMobilePhone =: customerNumber or Phone =: customerNumber) and isPersonAccount = true];
+                    if (aList != null && !aList.isEmpty() && aList.size() > 0) {
+                        alist[0].is_serviced__c = false;
+                        alist[0].Time_of_New_Enquiry__c = system.now();
+                        update alist[0];
+                        PersonContactWhoIds=alist[0].PersonContactId;
+                        recordId = alist[0].Id;
+                    } else {
+                        Lead l;
+                        if(!profile.isEmpty() && strPro.contains('Presales')){
+                        l = new Lead(lastName = 'Presales Lead - ' + customerNumber, RDS_Country__c= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = userId, Presales_Agent__c = userId, leadsource = cList[0].Type,
+                                     Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                        } else {
+                            l = new Lead(lastName = 'Sales Lead - ' + customerNumber , RDS_Country__c	= Country , RDS_Country_Code__c = CountryCode , mobilePhone = customerNumber, ownerId = userId, Manager__c = userId, leadsource = cList[0].Type,
+                            Lead_Sub_Source__c = cList[0].Sub_Source__c, Project__c = cList[0].Primary_Project__c, Time_of_New_Enquiry__c = system.now()); //,Campaign_Code__c=did
+                        }
+                        insert l;
+                        recordId = l.Id;
+                        newlead = true;
+                    }
+                }
+                if (string.isNotBlank(recordId) && !profile.isEmpty() && strPro.contains('Presales')) {
+                    task t = new task();
+                    t.status = 'Completed';
+                    t.task_type__c = 'Presales Call';
+                    t.Subject = 'Inbound Call';
+                    t.CallObject = ucid;
+                    t.Mobile_Number_Webform__c = customerNumber;
+                    t.country__c = Country;
+                    t.dialingCode__c = CountryCode;
+                    t.callType = 'Inbound';
+                    t.Communication_Type__c = 'Inbound Call';
+                    t.activityDate = System.today();
+                    t.Call_Time__c = System.Now().format('h:mm a');
+                  /*  if (userId != null)
+                        t.ownerId = userId;
+                    */
+                    if (recordId.getSObjectType().getDescribe().getName() == 'Lead') {
+                        List < Lead > lListD  = new  List < Lead >();
+                          lListD = [Select Id, Name,OwnerId, Lead_Id__c from Lead where Id =: recordId];
+                        t.whoId = recordId;
+                        t.Name1__c = lListD[0].Name;
+                        t.OPID__c = lListD[0].Lead_Id__c;
+                        if (userId != null){
+                            if(uList.size()>1){
+                                t.OwnerId = lListD[0].OwnerId;
+                            }else if(uList.size() == 1){
+                            t.ownerId = userId;
+                                }
+                         }
+                    } else if (recordId.getSObjectType().getDescribe().getName() == 'Account') {
+                        List < Account > lAccD = [Select Id, Name,PersonContactId,OwnerId from Account where Id =: recordId];
+                        t.whatId = recordId;
+                        t.whoId = lAccD[0].PersonContactId;
+                        t.Name1__c = lAccD[0].Name;
+                        t.OPID__c = 'This enquiry received on existing account';
+                        PersonContactWhoIds=lAccD[0].PersonContactId;
+                        if (userId != null){
+                            if(uList.size()>1){
+                                t.OwnerId = lAccD[0].OwnerId;
+                            }else if(uList.size() == 1){
+                            t.ownerId = userId;
+                                }
+                         }
+                    }
+                    t.CallDisposition = callStatus;
+                    t.CallDurationInSeconds = Integer.valueOf(duration);
+                    t.AudioFile__c = recordingFile;
+                    if (!ulist.isEmpty() && ulist.size() == 1)
+                        t.FullName__c = ulist[0].Name;
+                    //t.Name1__c = accList[0].Name;
+                    // t.OPID__c = oppList[0].Opportunity_ID__c;
+                    String x2 = did.right(10);
+                String y2 = '91'+x2;
+                    t.description = y2;
+                    String j = '91'+y2;
+                 System.debug(j);
+                    t.UTM_Campaign__c = j;
+                    if (cList != null && clist.size() == 1) {
+                        t.Enquiry_Source__c = cList[0].Type;
+                        t.Enquiry_Sub_Source__c = cList[0].Sub_Source__c;
+                        t.ProjectInterestedWeb__c = cList[0].Primary_Project__c;
+                        t.Campaign_Lookup__c = cList[0].Id;
+                        if (String.isNotBlank(cList[0].Campaign_Channel__c))
+                            t.Campaign_Channel__c = cList[0].Campaign_Channel__c;
+                        if (String.isNotBlank(cList[0].Campaign_Code__c))
+                            t.Campaign_Code__c = cList[0].Campaign_Code__c;
+                        if (String.isNotBlank(cList[0].Parent.Name))
+                            t.Parent_Campaign__c = cList[0].Parent.Name;
+                    }
+                   if(String.isNotBlank(t.ProjectInterestedWeb__c)){
+                      taskIdMap.put(t.whoId, t.ProjectInterestedWeb__c);
+                    }
+                if(taskIdMap.size()>0){
+                for (Id entryId : taskIdMap.keySet()) {
+                utmUniqueTaskList = [SELECT Id, Subject, WhoId, WhatId, OwnerId, Task_Type__c,ProjectInterestedWeb__c  from Task where WhoId =: entryId AND Task_Type__c =: 'Enquiry Received' AND ProjectInterestedWeb__c =: taskIdMap.get(entryId)];
+                    if(utmUniqueTaskList.size()>0){
+                        t.IdentifiedAs__c='Repeat';
+                    } else {
+                        t.IdentifiedAs__c='Unique';
+                    }
+                 }
+                }
+                    if (newlead)
+                        t.new_lead_created__c = true;
+                    try {
+                        insert t;   system.debug('success:'+t.id);
+                    } catch (Exception ex) {
+                        System.debug('task Update failed :' + ex.getMessage());
+                    }
+                }else{
+                    if(string.isNotBlank(recordId) && !profile.isEmpty() && strPro.contains('Sales')){
+                   task t = new task();
+                    t.status = 'Completed';
+                    t.task_type__c = 'Sales Call';
+                    t.Subject = 'Inbound Call';
+                    t.CallObject = ucid;
+                    t.Mobile_Number_Webform__c = customerNumber;
+                    t.country__c = Country;
+                    t.dialingCode__c = CountryCode;
+                    t.callType = 'Inbound';
+                    t.Communication_Type__c = 'Inbound Call';
+                    t.activityDate = System.today();
+                    t.Call_Time__c = System.Now().format('h:mm a');
+                /*    if (userId != null)
+                        t.ownerId = userId;
+                  */
+                        if (recordId.getSObjectType().getDescribe().getName() == 'Lead') {
+                        List < Lead > lListD  = new  List < Lead >();
+                          lListD = [Select Id, Name,OwnerId,Owner.Name,Lead_Id__c from Lead where Id =: recordId];
+                        t.whoId = recordId;
+                        t.Name1__c = lListD[0].Name;
+                        t.OPID__c = lListD[0].Lead_Id__c;
+                            if (userId != null){
+                            if(uList.size()>1){
+                                t.OwnerId = lListD[0].OwnerId;
+                                system.debug(lListD[0].Owner.Name);
+                            }else if(uList.size() == 1){
+                            t.ownerId = userId;
+                                }
+                            }
+                    } else if (recordId.getSObjectType().getDescribe().getName() == 'Account') {
+                        List < Account > lAccD = [Select Id, Name,OwnerId,Owner.Name,PersonContactId from Account where Id =: recordId];
+                        t.whatId = recordId;
+                        t.whoId = lAccD[0].PersonContactId;
+                        t.Name1__c = lAccD[0].Name;
+                        t.OPID__c = 'This enquiry received on existing account';
+                        PersonContactWhoIds=lAccD[0].PersonContactId;
+                        if (userId != null){
+                            if(uList.size()>1){
+                                t.OwnerId = lAccD[0].OwnerId;
+                                system.debug(lAccD[0].Owner.Name);
+                            }else if(uList.size() == 1){
+                            t.ownerId = userId;
+                                }
+                         }
+                    }
+                    t.CallDisposition = callStatus;
+                    t.CallDurationInSeconds = Integer.valueOf(duration);
+                    t.AudioFile__c = recordingFile;
+                    if (!ulist.isEmpty() && ulist.size() == 1)
+                        t.FullName__c = ulist[0].Name;
+                    //t.Name1__c = accList[0].Name;
+                    // t.OPID__c = oppList[0].Opportunity_ID__c;
+                    String x3 = did.right(10);
+                String y3 = '91'+x3;
+                    t.description = y3;
+                    t.UTM_Campaign__c = y3;
+                    if (cList != null && clist.size() == 1) {
+                        t.Enquiry_Source__c = cList[0].Type;
+                        t.Enquiry_Sub_Source__c = cList[0].Sub_Source__c;
+                        t.ProjectInterestedWeb__c = cList[0].Primary_Project__c;
+                        t.Campaign_Lookup__c = cList[0].Id;
+                        if (String.isNotBlank(cList[0].Campaign_Channel__c))
+                            t.Campaign_Channel__c = cList[0].Campaign_Channel__c;
+                        if (String.isNotBlank(cList[0].Campaign_Code__c))
+                            t.Campaign_Code__c = cList[0].Campaign_Code__c;
+                        if (String.isNotBlank(cList[0].Parent.Name))
+                            t.Parent_Campaign__c = cList[0].Parent.Name;
+                    }
+                   if(String.isNotBlank(t.ProjectInterestedWeb__c)){
+                      taskIdMap.put(t.whoId, t.ProjectInterestedWeb__c);
+                    }
+                if(taskIdMap.size()>0){
+                for (Id entryId : taskIdMap.keySet()) {
+                utmUniqueTaskList = [SELECT Id, Subject, WhoId, WhatId, OwnerId, Task_Type__c,ProjectInterestedWeb__c  from Task where WhoId =: entryId AND Task_Type__c =: 'Enquiry Received' AND ProjectInterestedWeb__c =: taskIdMap.get(entryId)];
+                    if(utmUniqueTaskList.size()>0){
+                        t.IdentifiedAs__c='Repeat';
+                    } else {
+                        t.IdentifiedAs__c='Unique';
+                    }
+                 }
+                }
+                    if (newlead)
+                        t.new_lead_created__c = true;
+                    try {
+                        insert t;system.debug('success:'+t.id);
+                    } catch (Exception ex) {
+                        System.debug('task Update failed :' + ex.getMessage());
+                    }  
+                    
+                    }
+                }
+             }
+                 
+             }else{
+              System.debug('Not logging this call back:' + callType + ':' + callStatus + ':' + customerNumber + ':' + ucid);
+             }
+        }    
+     
+     }
+    
+}
