@@ -1,0 +1,274 @@
+trigger trgoppwebengage on Opportunity (before insert, after insert, before update, after update) {
+
+	if(trigger.isAfter)
+    {
+        if(trigger.isInsert)
+        {
+            for(Opportunity opp : trigger.new)
+            {
+               
+                if(opp.LeadSource != 'Channel Partner' || opp.Walk_in_Source__c !=  'Channel Partner' || opp.LeadSource == 'Referral' || opp.Walk_in_Source__c ==  'Referral'){
+                    if(!test.isRunningTest())
+                    Ex_WebEngageServicesopportunity.createUserInWebEngage(opp.Id);
+                      }
+                
+                if(opp.LeadSource == 'Channel Partner' || opp.Walk_in_Source__c ==  'Channel Partner' ){
+                    CPsendOpp.sendOpp(opp.Id);
+                }
+                if(opp.LeadSource == 'Referral' || opp.Walk_in_Source__c ==  'Referral'){
+             //    CBsendOpp.sendOpp(opp.Id);    
+                }
+              
+                      
+             }
+        }
+        if(trigger.isUpdate){
+            for(Opportunity oppUp : trigger.new){
+                
+                if((Trigger.oldMap.get(oppUp.Id).StageName != Trigger.newMap.get(oppUp.Id).StageName) && (oppUp.LeadSource != 'Channel Partner' || oppUp.LeadSource != 'Referral')){
+                if(!test.isRunningTest())
+                      Ex_WebEngageServicesopportunity.createUserInWebEngage(oppUp.Id);
+                    }
+                
+                if((Trigger.oldMap.get(oppUp.Id).StageName != Trigger.newMap.get(oppUp.Id).StageName) && oppUp.LeadSource == 'Channel Partner'){
+                CPsendOpp.sendOpp(oppUp.Id);    
+                }
+                
+                if((Trigger.oldMap.get(oppUp.Id).StageName != Trigger.newMap.get(oppUp.Id).StageName) && oppUp.LeadSource == 'Referral'){
+               // CBsendOpp.sendOpp(oppUp.Id);
+                //      Ex_WebEngageServicesopportunity.createUserInWebEngage(oppUp.Id);
+                    }
+                
+                
+                if((Trigger.oldMap.get(oppUp.Id).SalesOrder_Number__c != Trigger.newMap.get(oppUp.Id).SalesOrder_Number__c) ){
+                BookingSOEmail.sendSOMail(oppUp.Id);
+
+                    }
+               
+                
+                 if((Trigger.oldMap.get(oppUp.Id).CampaignId != Trigger.newMap.get(oppUp.Id).CampaignId) && (oppUp.LeadSource != 'Channel Partner' || oppUp.LeadSource != 'Referral')){
+                   Ex_WebEngageServicesopportunity.createUserInWebEngage(oppUp.Id);
+                }
+                
+                
+                 if((Trigger.oldMap.get(oppUp.Id).Sales_Call_Attempt_Status__c != Trigger.newMap.get(oppUp.Id).Sales_Call_Attempt_Status__c) && (oppUp.LeadSource != 'Channel Partner' || oppUp.LeadSource != 'Referral')){
+                   Ex_WebEngageServicesopportunity.createUserInWebEngage(oppUp.Id);
+                }
+               }
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+// Will be triggered from trgoppwebengage line 12 and 22
+
+public class CPsendOpp {
+@future(callout=true)
+    public static void sendOpp(Id oId){
+        List<Opportunity> oList = new List<Opportunity>();
+        
+        oList = [Select Id,Name,Opportunity_ID__c,AccountId,Account_Email__c,Country_Code__c,Account_Mobile_Number__c 
+                 ,Project__r.Project_Id_Auto_Number__c,StageName,Site_Visit_Count__c,Date_Of_Site_Visit__c,Channel_Partner__r.Name
+                 ,Walk_in_Respective_Customer_Account__r.Address_Local__c,Walk_in_Respective_Customer_Account__r.City_Local__c  
+                 ,Walk_in_Respective_Customer_Account__r.Country__c,Walk_in_Respective_Customer_Account__r.Office_Street__c,
+                 Walk_in_Respective_Customer_Account__r.Residential_Street__c,Walk_in_Respective_Customer_Account__r.State__c 
+                 ,Walk_in_Respective_Customer_Account__r.Alternate_Address_Street__c,Agreement_Value__c 
+                 ,Booking__r.Name,Booking__r.Booking_Date__c,Resident_Status__c,Unit__r.Name,SAP_Agreement_Value__c
+               ,Status_Opp__c ,LastModifiedById,Reason_For_Lost_Status__c,Channel_Partner__c  From Opportunity WHERE Id =: oId];
+        
+         
+        
+        
+        
+        
+        
+        //String dsvDate = oList[0].Date_Of_Site_Visit__c.format();
+        // String Svc = String.valueOf(oList[0].Site_Visit_Count__c.format());
+         String agv = String.valueOf(oList[0].Agreement_Value__c.format());
+        //String Bkdate = oList[0].Booking__r.Booking_Date__c.format();
+        //String pdate = oList[0].Ready_Possession_Date__c.format();
+        
+        String lastUpd  = String.valueOf(oList[0].LastModifiedById);
+        
+       
+        String Aggvalue;
+        if(oList[0].SAP_Agreement_Value__c == '' || oList[0].SAP_Agreement_Value__c == null){
+                       Aggvalue = '0';            
+        }else{
+            Aggvalue = oList[0].SAP_Agreement_Value__c;
+
+        }
+        
+        
+        Decimal SVcount;
+        if( oList[0].Site_Visit_Count__c == null){
+                          SVcount = 0;         
+        }else{
+            SVcount = oList[0].Site_Visit_Count__c;
+
+        }
+        
+        
+        
+        
+        String BkName;
+        if(oList[0].Booking__r.Name == '' || oList[0].Booking__r.Name == null){
+                       BkName = '';            
+        }else{
+            BkName = oList[0].Booking__r.Name;
+
+        }
+        
+        
+        
+        
+        
+         String BKdate;
+        if(oList[0].Booking__r.Booking_Date__c == null){
+              BKdate = '';                
+        }else{
+            BKdate = oList[0].Booking__r.Booking_Date__c.format();
+
+        }
+        
+        
+   /*     String ReadyPossDate;
+        if(oList[0].Ready_Possession_Date__c == null){
+              ReadyPossDate = '';                
+        }else{
+            ReadyPossDate = oList[0].Ready_Possession_Date__c.format();
+
+        }*/
+        
+        
+        
+         String Dateofsv;
+        if(oList[0].Date_Of_Site_Visit__c == null){
+              Dateofsv = '';                
+        }else{
+             Dateofsv = string.valueOfGmt(oList[0].Date_Of_Site_Visit__c);
+            //Dateofsv = oList[0].Date_Of_Site_Visit__c.format();
+
+        }
+        
+        String reason;
+        if(oList[0].Reason_For_Lost_Status__c == null){
+            reason = 'NA';
+        }else{
+           reason =  oList[0].Reason_For_Lost_Status__c;
+        }
+        
+        String uNumber ='';
+        if(oList[0].Unit__c == null  ){
+            uNumber= 'NA';
+        }else{
+            uNumber = oList[0].Unit__r.Name;
+        }
+        
+        
+        String cpId;
+        if(oList[0].Channel_Partner__c != null ){
+            cpId = oList[0].Channel_Partner__c;
+        }else{
+            cpId = 'a095c00001GFGIeAAP';
+        }
+                
+        
+        
+        String project;
+        if(oList[0].Project__c != null){
+            project = oList[0].Project__c;
+        }else{
+            project = 'a0Y6A000003oTzSUAU';
+        }
+        
+        String cCode;
+        if(oList[0].Country_Code__c != null){
+            cCode = oList[0].Country_Code__c;
+        }else{
+            cCode = '+91';
+        }
+        
+        
+        String aMob;
+        if(oList[0].Account_Mobile_Number__c != null){
+            aMob = oList[0].Account_Mobile_Number__c;
+        }else{
+            aMob = '7744110022';
+        }
+        
+        
+        String aEm;
+        if(oList[0].Account_Email__c != null){
+            aEm = oList[0].Account_Email__c;
+        }else{
+            aEm = 'testCase@gmail.com';
+        }
+        
+        
+        String name;
+        if(oList[0].Name != null){
+            name =  oList[0].Name;
+        }else{
+            name = 'CP Opportunity';
+        }
+        
+        
+        
+        
+        String jsonS = '';
+        JSONGenerator gen = JSON.createGenerator(true);
+        gen.writeStartArray();
+        gen.writeStartObject();
+        
+        
+        
+        gen.writeStringField('accountCrmId',oList[0].AccountId);
+        gen.writeStringField('crmId',oList[0].Id);
+        gen.writeStringField('Email',aEm);
+        gen.writeStringField('lastUpdatedOn','NA');
+        gen.writeStringField('mobileCountryCode',cCode);
+        gen.writeStringField('mobileNumber',aMob);
+        gen.writeStringField('Name',name);
+        gen.writeStringField('projectCrmId',project);
+        gen.writeStringField('qualification','NA');
+        gen.writeStringField('referralSource','CUSTOMER');
+        gen.writeNumberField('siteVisitCount',SVcount);
+        gen.writeStringField('siteVisitDate','NA');
+        gen.writeStringField('source','CHANNEL_PARTNER');
+        gen.writeStringField('sourceCrmId',cpId);
+        gen.writeStringField('status','SITE_VISIT_DONE');
+        //gen.writeStringField('status',oList[0].StageName);
+        gen.writeStringField('statusReason','NA');
+        
+        
+        gen.writeEndObject();   
+        gen.writeEndArray();
+            jsonS = gen.getAsString();
+            System.debug('jsonMaterials'+jsonS);
+        
+        
+        String endpoint = 'https://uat.loyalie.in/winnre/crmApi/enquiryUpsert';
+       // String endpoint = 'https://dev.loyalie.in/winnre/crmApi/enquiryUpsert';
+        HttpRequest req = new HttpRequest();
+        req.setEndpoint(endpoint);
+        req.setHeader('Content-Type', 'application/json');
+        req.setHeader('Accept','*/*');
+        req.setHeader('Client-Id','b170c980898c1639711e4613010044c8bfa37f205d1c599e54660417645e9c8b');
+        req.setHeader('requestKey','IWXE9abzDwLF56wHNVK5iA==');
+        req.setMethod('POST');
+        req.setbody(jsonS);
+        system.debug('request: '+ req);
+        Http http = new Http();
+        HTTPResponse response = http.send(req);
+        system.debug('response: '+ response);
+    }
+}
