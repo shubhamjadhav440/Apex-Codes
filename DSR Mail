@@ -1,0 +1,549 @@
+global class DSRMail2 implements Schedulable{
+
+    
+    global static void calculateData() {
+      String prjName;
+      Map<string , List<AggregateResult>> mapSMOppAgrList = new Map<string , List<AggregateResult>>();
+      Map<string , List<AggregateResult>> mapSMOppAgrListMonth = new Map<string , List<AggregateResult>>();
+      List<AggregateResult>  smWiseAggregation = new List<AggregateResult>();
+      List<AggregateResult>  smWiseAggregationMonth = new List<AggregateResult>();
+      List<AggregateResult>  sourcingWiseAggregation = new List<AggregateResult>();
+      List<AggregateResult> sourcingWiseAggregationMonth = new List<AggregateResult>();
+      Map<string , List<AggregateResult>> mapSourcingOppAgrList = new Map<string , List<AggregateResult>>();
+      Map<string , List<AggregateResult>>  mapSourcingOppAgrListMonth =  new Map<string , List<AggregateResult>>();
+      Map<string , List<Opportunity>> mapOppList = new Map<string , List<Opportunity>>();
+      Map<string , List<AggregateResult>> mapOppAgrList = new Map<string , List<AggregateResult>>();
+      Map<string , List<AggregateResult>> mapOppAgrListMonth = new Map<string , List<AggregateResult>>();
+      List<AggregateResult>  oppListForTheDay = new List<AggregateResult>();
+      List<AggregateResult>  oppListForTheMonth = new List<AggregateResult>();
+        
+    
+    List<Project__c> proList = [SELECT Id,Name
+                                 FROM Project__c 
+                                WHERE Project_Company__c = 'Joyville'
+                                //Name LIKE '%Joyville%' OR Name LIKE '%Sensorium%'
+                                ];
+    system.debug(proList);
+    
+        for(Project__c p : proList){
+ 
+            
+      mapSMOppAgrList = new Map<string , List<AggregateResult>>();
+      mapSMOppAgrListMonth = new Map<string , List<AggregateResult>>();
+       smWiseAggregation = new List<AggregateResult>();
+        smWiseAggregationMonth = new List<AggregateResult>();
+        sourcingWiseAggregation = new List<AggregateResult>();
+       sourcingWiseAggregationMonth = new List<AggregateResult>();
+       mapSourcingOppAgrList = new Map<string , List<AggregateResult>>();
+        mapSourcingOppAgrListMonth =  new Map<string , List<AggregateResult>>();
+       mapOppList = new Map<string , List<Opportunity>>();
+       mapOppAgrList = new Map<string , List<AggregateResult>>();
+       mapOppAgrListMonth = new Map<string , List<AggregateResult>>();
+        oppListForTheDay = new List<AggregateResult>();
+        oppListForTheMonth = new List<AggregateResult>();
+    
+            system.debug(p.Name);
+            prjName = p.Name;
+            oppListForTheDay = [SELECT Walk_in_Source__c walkin, COUNT(Booking__c) bkcount,
+                            SUM(Site_Visit_Count__c) svCount,SUM(Total_SV_Count__c) totalSV
+                            FROM Opportunity
+                            Where Project__c =: p.Id
+                            AND (Walk_in_Source__c = 'Presales' OR Walk_in_Source__c = 'Direct' OR Walk_in_Source__c = 'Channel Partner' OR Walk_in_Source__c = 'Referral'  ) 
+                           AND  CreatedDate = TODAY 
+                           GROUP BY Walk_in_Source__c
+                        ];
+            
+            SYSTEM.DEBUG(oppListForTheDay);
+             
+            for(AggregateResult agr: oppListForTheDay)
+        {
+            if(mapOppAgrList.containsKey((string)agr.get('walkin')))
+            {
+                mapOppAgrList.get((string)agr.get('walkin')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr = new List<AggregateResult>();
+                tempLstAgr.add(agr);
+                mapOppAgrList.put((string)agr.get('walkin'),tempLstAgr);
+            }
+           
+        }
+            
+            
+             oppListForTheMonth = [SELECT Walk_in_Source__c walkin1, COUNT(Booking__c) bkcount1,
+                            SUM(Site_Visit_Count__c) svCount1,SUM(Total_SV_Count__c) totalSV1
+                            FROM Opportunity
+                            Where Project__c =: p.Id AND Walk_in_Source__c != null
+                            AND (Walk_in_Source__c = 'Presales' OR Walk_in_Source__c = 'Direct' OR Walk_in_Source__c = 'Channel Partner' OR Walk_in_Source__c = 'Referral'  ) 
+                            AND  CreatedDate = THIS_MONTH 
+                            GROUP BY Walk_in_Source__c
+                        ];
+   
+       SYSTEM.DEBUG(oppListForTheMonth);
+            
+            
+              
+        for(AggregateResult agr: oppListForTheMonth)
+        {
+            if(mapOppAgrListMonth.containsKey((string)agr.get('walkin1')))
+            {
+                mapOppAgrListMonth.get((string)agr.get('walkin1')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr1 = new List<AggregateResult>();
+                tempLstAgr1.add(agr);
+                mapOppAgrListMonth.put((string)agr.get('walkin1'),tempLstAgr1);
+            }
+           
+        }
+            
+            
+       
+            
+             smWiseAggregation = [SELECT Sales_Manager_lookup__r.Name sm,COUNT(Booking__c) bkcount,
+                            SUM(Site_Visit_Count__c) svCount,SUM(Total_SV_Count__c) totalSV
+                            FROM Opportunity
+                            Where Project__c =: p.Id 
+                                  AND (Walk_in_Source__c = 'Presales' OR Walk_in_Source__c = 'Direct' OR Walk_in_Source__c = 'Channel Partner' OR Walk_in_Source__c = 'Referral'  )
+                            AND CreatedDate = TODAY
+                            GROUP BY Sales_Manager_lookup__r.Name
+                        ];
+        
+        
+       for(AggregateResult agr: smWiseAggregation)
+        {
+            if(mapSMOppAgrList.containsKey((string)agr.get('sm')))
+            {
+                mapSMOppAgrList.get((string)agr.get('sm')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr1 = new List<AggregateResult>();
+                tempLstAgr1.add(agr);
+                mapSMOppAgrList.put((string)agr.get('sm'),tempLstAgr1);
+            }
+           
+        }
+            
+            
+        
+        smWiseAggregationMonth = [SELECT Sales_Manager_lookup__r.Name sm1,COUNT(Booking__c) bkcount1,
+                            SUM(Site_Visit_Count__c) svCount1,SUM(Total_SV_Count__c) totalSV1
+                            FROM Opportunity
+                            Where Project__c =: p.Id 
+                                  AND (Walk_in_Source__c = 'Presales' OR Walk_in_Source__c = 'Direct' OR Walk_in_Source__c = 'Channel Partner' OR Walk_in_Source__c = 'Referral'  )
+                            AND CreatedDate = THIS_MONTH
+                            GROUP BY Sales_Manager_lookup__r.Name
+                        ];
+        
+        
+       for(AggregateResult agr: smWiseAggregationMonth)
+        {
+            if(mapSMOppAgrListMonth.containsKey((string)agr.get('sm1')))
+            {
+                mapSMOppAgrListMonth.get((string)agr.get('sm1')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr1 = new List<AggregateResult>();
+                tempLstAgr1.add(agr);
+                mapSMOppAgrListMonth.put((string)agr.get('sm1'),tempLstAgr1);
+            }
+           
+        }
+        
+        
+        sourcingWiseAggregation = [SELECT Sourcing_Manager__c sourcing,COUNT(Booking__c) bkcount,
+                            SUM(Site_Visit_Count__c) svCount,SUM(Total_SV_Count__c) totalSV                           
+                            FROM Opportunity
+                            Where Project__c =: p.Id AND Sourcing_Manager__c != null AND CreatedDate = TODAY
+                                   AND Sourcing_Manager__c != 'No sourcing manager'
+                                   AND ( Walk_in_Source__c = 'Channel Partner'   )
+                            GROUP BY Sourcing_Manager__c
+                        ];
+        
+        for(AggregateResult agr: sourcingWiseAggregation)
+        {
+            if(mapSourcingOppAgrList.containsKey((string)agr.get('sourcing')))
+            {
+                mapSourcingOppAgrList.get((string)agr.get('sourcing')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr = new List<AggregateResult>();
+                tempLstAgr.add(agr);
+                mapSourcingOppAgrList.put((string)agr.get('sourcing'),tempLstAgr);
+            }
+           
+        }
+        
+        
+        sourcingWiseAggregationMonth = [SELECT Sourcing_Manager__c sourcing,COUNT(Booking__c) bkcount,
+                            SUM(Site_Visit_Count__c) svCount,SUM(Total_SV_Count__c) totalSV                           
+                            FROM Opportunity
+                            Where Project__c =: p.Id AND Sourcing_Manager__c != null AND CreatedDate = THIS_MONTH
+                                        AND Sourcing_Manager__c != 'No sourcing manager'
+                                        AND (Walk_in_Source__c = 'Channel Partner')
+                            GROUP BY Sourcing_Manager__c
+                        ];
+        
+        for(AggregateResult agr: sourcingWiseAggregationMonth)
+        {
+            if(mapSourcingOppAgrListMonth.containsKey((string)agr.get('sourcing')))
+            {
+                mapSourcingOppAgrListMonth.get((string)agr.get('sourcing')).add(agr);
+            }
+            else
+            {
+                List<AggregateResult> tempLstAgr7 = new List<AggregateResult>();
+                tempLstAgr7.add(agr);
+                mapSourcingOppAgrListMonth.put((string)agr.get('sourcing'),tempLstAgr7);
+            }
+        }
+             DSRMail.sendEmail(prjName,mapOppAgrList,mapOppAgrListMonth, mapSMOppAgrList,mapSMOppAgrListMonth,mapSourcingOppAgrList,mapSourcingOppAgrListMonth);
+}            
+        
+        
+    }
+    
+	global void execute(SchedulableContext sc) {
+        DSRMail2.calculateData();
+    }  
+}
+
+
+
+
+
+
+
+
+
+
+
+
+global class DSRMail {
+   
+    global static void sendEmail(String prjName,Map<string , List<AggregateResult>> mapOppAgrList,Map<string , List<AggregateResult>> mapOppAgrListMonth,Map<string , List<AggregateResult>> mapSMOppAgrList,Map<string , List<AggregateResult>> mapSMOppAgrListMonth,Map<string , List<AggregateResult>> mapSourcingOppAgrList,Map<string , List<AggregateResult>> mapSourcingOppAgrListMonth){
+   
+     Decimal d = 0;
+     Decimal e = 0;
+     Decimal f = 0;
+     Decimal g = 0;
+     Decimal h = 0;
+     Decimal i = 0;
+     Decimal j = 0;
+     Decimal k = 0;
+     Decimal l = 0;
+     Decimal m = 0;
+     Decimal n = 0;
+     Decimal o= 0;
+     List<Project__c> pr = new List<Project__c>();
+     String projectName;
+     Messaging.SingleEmailMessage mail = new Messaging.SingleEmailMessage();
+     List<Messaging.Email> messages = new List<Messaging.Email>();
+     mail.setUseSignature(false);
+     mail.setToAddresses(new List<String>{'mitesh.temgire@shapoorji.com','Ronak.Gala@shapoorji.com','Pratik.Uchil@shapoorji.com','abhishek.badkul@shapoorji.com'});
+     //mail.setToAddresses(new List<String>{'aniket.lambat@excellerconsultancy.in'});
+        mail.setSubject('DSR Report from Salesforce');
+       
+     OrgWideEmailAddress owea = new OrgWideEmailAddress();
+     owea = [SELECT Id, Address, DisplayName FROM
+            OrgWideEmailAddress WHERE DisplayName='System Admin'];
+     system.debug(owea);
+           
+     if ( owea != null) {
+     mail.setOrgWideEmailAddressId(owea.Id);
+          }
+
+        //pr = [SELECT Id,Name FROM Project__c WHERE Id =: prjName];
+        //projectName = pr[0].Name;
+        system.debug('project Name: '+prjName);
+       	projectName = prjName;
+        String body = 'Dear Sir/Mam'+'<br/>';
+        body += '<br/>';
+        body += 'Please find the DSR Report attached for Project : '+projectName+' .'+'<br/>';
+        body += '<br/>';
+        body += '<br/>';
+        body += '<div style="width:100%;font-family: Arial, Helvetica, sans-serif;border-collapse: collapse;" border="2px solid black;padding: 8px;"><center><b>WALK-IN & SOLD DETAILS</b></center></div>';
+ 
+       
+       
+       body += ' <table  border="1px solid black" align="center" class="table table-responsive">';
+       body += '<tr>';
+       body += '<th colspan ="11" style="background-color:yellow;">';
+       body += '<center>Walk In and Sold Details For The Day</center>';
+       body += '</th>';
+       body += ' </tr>';
+     
+       body += '<tr>';
+       body += '<th rowspan="2" style="background-color:#FFD580;width:18.25%">';
+       body += '<center>Source</center>';
+       body += '</th>';    
+       body += '</tr>';
+       
+       body += '<tr style="background-color:#7EC0EE;">';
+       body += '<th>Site Visit</th>';
+       body += '<th>Total Site Visit</th>';
+       body += '<th>Total Booking</th>';
+       body += '<th>Conversion Ratio</th>';          
+       body += '</tr>';
+               
+       
+        for(String s : mapOppAgrList.keySet()){
+         for(AggregateResult agr : mapOppAgrList.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount')+'</td>';
+         body+='<td>'+agr.get('totalSV')+'</td>';
+         body+='<td>'+agr.get('bkcount')+'</td>';
+         if(integer.valueOf(agr.get('bkcount')) != null && integer.valueOf(agr.get('svCount')) != null){
+             system.debug('project Name: '+prjName);
+         	d = integer.valueOf(agr.get('bkcount'))/integer.valueOf(agr.get('svCount'))*100;
+             SYSTEM.DEBUG(integer.valueOf(agr.get('bkcount')));
+             SYSTEM.DEBUG(integer.valueOf(agr.get('svCount')));
+             system.debug('project Name: '+prjName);
+             system.debug('agr result D: '+d);
+          }
+         else {
+                 d=0;
+              }
+             }
+         e = d.setScale(2);
+         body+='<td>'+e+' %'+'</td>';
+         body+='</tr>';
+ 
+         
+     }  
+         body += '</table>';      
+       
+           
+        body += '    <table  border="1px solid black" align="center" class="table table-responsive">';
+        body += '        <tr>';
+        body += '        <th colspan ="11" style="background-color:yellow;">';
+        body += '        <center>Walk In and Sold Details For The Month</center>';
+        body += '        </th>';
+        body += '        </tr>';
+        body += '        <tr>';
+        body += '        <th rowspan="2" style="background-color:#FFD580;width:18.25%">';
+        body += '        <center>Source</center>';
+        body += '        </th>';
+        body += '        </tr>';
+             
+        body += '       <tr style="background-color:#7EC0EE;">';
+        body += '       <th>Site Visit</th>';
+        body += '       <th>Total Site Visit</th>';
+        body += '       <th>Total Booking</th>';
+        body += '       <th>Conversion Ratio</th>';  
+        body += '       </tr>';
+         
+        for(String s : mapOppAgrListMonth.keySet()){    
+        for(AggregateResult agr : mapOppAgrListMonth.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount1')+'</td>';
+         body+='<td>'+agr.get('totalSV1')+'</td>';
+         body+='<td>'+agr.get('bkcount1')+'</td>';
+            if(integer.valueOf(agr.get('bkcount1')) != null && integer.valueOf(agr.get('svCount1')) != null){
+                system.debug('project Name: '+prjName);
+          		f = integer.valueOf(agr.get('bkcount1'))/integer.valueOf(agr.get('svCount1'))*100;
+            }
+            else{
+                f=0;
+            }
+            }
+                g = f.setScale(2);
+         body+='<td>'+g+' %'+'</td>';
+         body += '</tr>';  
+       
+                        
+   }
+         body += '</table>';
+       
+               
+            body += '<table  border="1px solid black" align="center" class="table table-responsive">';
+            body += '    <tr>';
+            body += '    <th colspan ="11" style="background-color:yellow;">';
+            body += '    <center>Sales Managers Wise For The Day</center>';
+            body += '    </th>';
+            body += '    </tr>';
+            body += '    <tr>';
+            body += '    <th rowspan="2" style="background-color:#FFD580;width:18.25%">';
+            body += '    <center>Closing Managers</center>';
+            body += '    </th>';
+            body += '    </tr>';
+            body += '    <tr style="background-color:#7EC0EE;">';
+         
+            body += '        <th>Site Visit</th>';
+            body += '        <th>Total Site Visit</th>';
+            body += '        <th>Total Booking</th>';
+            body += '        <th>Conversion Ratio</th>';
+            body += '        </tr>';
+           
+        for(String s : mapSMOppAgrList.keySet()){
+         for(AggregateResult agr : mapSMOppAgrList.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount')+'</td>';
+         body+='<td>'+agr.get('totalSV')+'</td>';
+         body+='<td>'+agr.get('bkcount')+'</td>';
+          if(integer.valueOf(agr.get('bkcount')) != null && integer.valueOf(agr.get('svCount')) != null){
+              system.debug('project Name: '+prjName);
+              h = integer.valueOf(agr.get('bkcount'))/integer.valueOf(agr.get('svCount'))*100;
+          }
+             else{
+                 h=0;
+             }
+             }
+          i = h.setScale(2);
+         body+='<td>'+i+' %'+'</td>';
+         body += '</tr>';
+         
+    }
+         body += '</table>';
+       
+       
+       
+         body += '    <table  border="1px solid black" align="center" class="table table-responsive">';
+         body += '      <tr>';
+         body += '      <th colspan ="11" style="background-color:yellow;">';
+         body += '      <center>Sales Managers Wise For The Month</center>';
+         body += '      </th>';
+         body += '      </tr>';
+         body += '      <tr>';
+         body += '      <th rowspan="2" style="background-color:#FFD580;width:18.25%">';
+         body += '      <center>Closing Managers</center>';
+         body += '      </th>';
+         
+         body += '      </tr>';
+         body += '      <tr style="background-color:#7EC0EE;">';
+         
+         body += '    <th>Site Visit</th>';
+         body += '    <th>Total Site Visit</th>';
+         body += '    <th>Total Booking</th>';
+         body += '   <th>Conversion Ratio</th>';
+         body += '     </tr>';
+         
+        for(String s : mapSMOppAgrListMonth.keySet()){
+        for(AggregateResult agr : mapSMOppAgrListMonth.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount1')+'</td>';
+         body+='<td>'+agr.get('totalSV1')+'</td>';
+         body+='<td>'+agr.get('bkcount1')+'</td>';
+         if(integer.valueOf(agr.get('bkcount1')) != null && integer.valueOf(agr.get('svCount1')) != null){
+             system.debug('project Name: '+prjName);
+            j = integer.valueOf(agr.get('bkcount1'))/integer.valueOf(agr.get('svCount1'))*100;
+         }
+            else{
+                j=0;
+            }
+            }
+          k = j.setScale(2);
+         body+='<td>'+k+' %'+'</td>';
+         body += '</tr>';
+        
+        }          
+             body += '</table>';
+           
+                 
+         
+           body += ' <table  border="1px solid black" align="center" class="table table-responsive">';
+           body += ' <tr>';
+           body += ' <th colspan ="11" style="background-color:yellow;">';
+           body += ' <center>Sourcing Managers Wise For The Day</center>';
+           body += ' </th>';
+           body += ' </tr>';
+           body += ' <tr>';
+           body += '  <th rowspan="2" style="background-color:#FFD580;">';
+           body += '  <center>Sourcing Managers</center>';
+           body += '  </th>';        
+           body += '  </tr>';
+           body += '  <tr style="background-color:#7EC0EE;">';
+             
+          body += '      <th>Site Visit</th>';
+          body += '      <th>Total Site Visit</th>';
+          body += '      <th>Total Booking</th>';
+          body += '   <th>Conversion Ratio</th>';
+          body += '   </tr>';
+               
+         
+         for(String s : mapSourcingOppAgrList.keySet()){
+        for(AggregateResult agr : mapSourcingOppAgrList.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount')+'</td>';
+         body+='<td>'+agr.get('totalSV')+'</td>';
+         body+='<td>'+agr.get('bkcount')+'</td>';
+         if(integer.valueOf(agr.get('bkcount')) != null && integer.valueOf(agr.get('svCount')) != null){
+             system.debug('project Name: '+prjName);
+            l = integer.valueOf(agr.get('bkcount'))/integer.valueOf(agr.get('svCount'))*100;
+         }
+            else{
+                l=0;
+            }
+            }
+          m = l.setScale(2);
+         body+='<td>'+m+' %'+'</td>';
+         body += '</tr>';
+        
+        }
+         body += '</table>';
+             
+         
+       
+           body += ' <table  border="1px solid black" align="center" class="table table-responsive">';
+           body += ' <tr>';
+           body += ' <th colspan ="11" style="background-color:yellow;">';
+
+           body += '  </th>';
+           body += '  </tr>';
+           body += '  <tr>';
+           body += '  <th rowspan="2" style="background-color:#FFD580;">';
+           body += '  <center>Sourcing Managers</center>';
+           body += '  </th>';        
+           body += '  </tr>';
+           body += '  <tr style="background-color:#7EC0EE;">';
+             
+          body += '      <th>Site Visit</th>';
+          body += '      <th>Total Site Visit</th>';
+          body += '      <th>Total Booking</th>';
+          body += '      <th>Conversion Ratio</th>';
+          body += '   </tr>';
+               
+        for(String s : mapSourcingOppAgrListMonth.keySet()){
+        for(AggregateResult agr : mapSourcingOppAgrListMonth.get(s)){
+         body+='<tr>';
+         body+='<td>'+s+'</td>';
+         body+='<td>'+agr.get('svCount')+'</td>';
+         body+='<td>'+agr.get('totalSV')+'</td>';
+         body+='<td>'+agr.get('bkcount')+'</td>';
+         if(integer.valueOf(agr.get('bkcount')) != null && integer.valueOf(agr.get('svCount')) != null){
+             system.debug('project Name: '+prjName);
+            n = integer.valueOf(agr.get('bkcount'))/integer.valueOf(agr.get('svCount'))*100;
+         }
+            else{
+                n=0;
+            }
+            }
+         o = n.setScale(2);
+         body+='<td>'+o+' %'+'</td>';
+         body += '</tr>';
+        
+        }
+         body += '</table>';          
+
+
+          mail.setHtmlBody(body);
+           
+            if(!test.isRunningTest()){  
+          messages.add(mail);
+                 }
+     
+        System.debug('2');
+        Messaging.sendEmail(messages);
+       
+    }
+}
