@@ -531,7 +531,7 @@ global class DSRMail {
          o = n.setScale(2);
          body+='<td>'+o+' %'+'</td>';
          body += '</tr>';
-        
+         
         }
          body += '</table>';          
 
